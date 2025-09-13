@@ -1,7 +1,7 @@
-// Get DOM elements
+// chatbot.js
 const chatBody = document.getElementById("chatBody");
 const userInput = document.getElementById("userInput");
-const sendBtn = document.getElementById("sendBtn");
+const sendBtn = document.querySelector("button");
 
 // Initialize total tokens from localStorage
 let totalTokensUsed = parseInt(localStorage.getItem('totalTokensUsed')) || 0;
@@ -15,6 +15,15 @@ function appendMessage(text, sender = "bot") {
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
+// Append token info
+function appendTokenInfo() {
+  const tokenDiv = document.createElement("div");
+  tokenDiv.className = "token-info";
+  tokenDiv.textContent = `Total tokens used: ${totalTokensUsed}`;
+  chatBody.appendChild(tokenDiv);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
 // Send message
 async function sendMessage() {
   const msg = userInput.value.trim();
@@ -24,29 +33,22 @@ async function sendMessage() {
   userInput.value = "";
 
   try {
-    const res = await fetch("/chat", {
+    const res = await fetch("https://healnet-hackathon.onrender.com/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: msg }),
     });
 
     if (!res.ok) throw new Error("Server error");
-
     const data = await res.json();
 
     appendMessage(data.reply, "bot");
 
-    // Update tokens
-    totalTokensUsed += data.tokensUsed;
+    // Update total tokens
+    totalTokensUsed += data.tokensUsed || 0;
     localStorage.setItem("totalTokensUsed", totalTokensUsed);
 
-    // Display token info
-    const tokenDiv = document.createElement("div");
-    tokenDiv.className = "token-info";
-    tokenDiv.textContent = `Total tokens used: ${totalTokensUsed}`;
-    chatBody.appendChild(tokenDiv);
-
-    chatBody.scrollTop = chatBody.scrollHeight;
+    appendTokenInfo();
 
   } catch (err) {
     console.error("Chat error:", err);
@@ -54,7 +56,7 @@ async function sendMessage() {
   }
 }
 
-// Send on Enter
+// Send on Enter key
 userInput.addEventListener("keypress", (e) => {
   if (e.key === "Enter") sendMessage();
 });
