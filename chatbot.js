@@ -3,6 +3,9 @@ const chatBody = document.getElementById("chatBody");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
 
+// Initialize total tokens from localStorage
+let totalTokensUsed = parseInt(localStorage.getItem("totalTokensUsed")) || 0;
+
 // Helper to append messages
 function appendMessage(text, sender = "bot") {
   const msg = document.createElement("div");
@@ -10,24 +13,6 @@ function appendMessage(text, sender = "bot") {
   msg.innerHTML = text.replace(/\n/g, "<br>");
   chatBody.appendChild(msg);
   chatBody.scrollTop = chatBody.scrollHeight;
-}
-
-// Load global tokens from DB
-async function loadTokens() {
-  try {
-    const res = await fetch("/tokens");
-    if (!res.ok) throw new Error("Failed to fetch tokens");
-    const data = await res.json();
-
-    const tokenDiv = document.createElement("div");
-    tokenDiv.className = "token-info";
-    tokenDiv.textContent = `🌐 Total tokens used (all users): ${data.totalTokens}`;
-    chatBody.appendChild(tokenDiv);
-
-    chatBody.scrollTop = chatBody.scrollHeight;
-  } catch (err) {
-    console.error("Error loading tokens:", err);
-  }
 }
 
 // Send message
@@ -39,7 +24,7 @@ async function sendMessage() {
   userInput.value = "";
 
   try {
-    const res = await fetch("/chat", {
+    const res = await fetch("https://healnet-hackathon.onrender.com/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: msg }),
@@ -51,16 +36,23 @@ async function sendMessage() {
 
     appendMessage(data.reply, "bot");
 
-    // Show global tokens from DB
+    // Update tokens
+    totalTokensUsed += data.tokensUsed;
+    localStorage.setItem("totalTokensUsed", totalTokensUsed);
+
+    // Display token info
     const tokenDiv = document.createElement("div");
     tokenDiv.className = "token-info";
-    tokenDiv.textContent = `🌐 Total tokens used (all users): ${data.totalTokens}`;
+    tokenDiv.textContent = `Total tokens used: ${totalTokensUsed}`;
     chatBody.appendChild(tokenDiv);
 
     chatBody.scrollTop = chatBody.scrollHeight;
   } catch (err) {
     console.error("Chat error:", err);
-    appendMessage("⚠️ Sorry, I’m having trouble right now. Please try again.", "bot");
+    appendMessage(
+      "⚠️ Sorry, I’m having trouble right now. Please try again.",
+      "bot"
+    );
   }
 }
 
@@ -72,5 +64,13 @@ userInput.addEventListener("keypress", (e) => {
 // Send on button click
 sendBtn.addEventListener("click", sendMessage);
 
-// ✅ Load tokens on page load
-loadTokens();
+// Optional: reset tokens
+function resetTokens() {
+  totalTokensUsed = 0;
+  localStorage.setItem("totalTokensUsed", 0);
+  const resetDiv = document.createElement("div");
+  resetDiv.className = "token-info";
+  resetDiv.textContent = "Tokens reset to 0";
+  chatBody.appendChild(resetDiv);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
