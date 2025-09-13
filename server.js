@@ -1,36 +1,39 @@
-// index.js
+// server.js
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
 import axios from 'axios';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Check keys
 if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ Missing OPENAI_API_KEY in .env");
+  console.error("❌ Missing OPENAI_API_KEY");
   process.exit(1);
 }
 if (!process.env.SERP_API_KEY) {
   console.warn("⚠️ Missing SERP_API_KEY, live queries may fail");
 }
 
-
-app.use(cors());
+// Middleware
+app.use(cors({
+  origin: 'https://healnet-hackathon.vercel.app' // only allow your frontend
+}));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
+// OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 60000 });
 
-// Fetch live data from SerpAPI
+// Optional root route
+app.get('/', (req, res) => {
+  res.send('Chatbot backend running ✅');
+});
+
+// Fetch live data via SerpAPI
 const fetchSerpData = async (query) => {
   if (!process.env.SERP_API_KEY) return null;
   try {
@@ -55,7 +58,7 @@ app.post('/chat', async (req, res) => {
   if (!message) return res.status(400).json({ reply: "Provide a message", tokensUsed: 0 });
 
   try {
-    // Ask GPT-4o-mini
+    // GPT-4o-mini first
     const gptReply = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: 'user', content: message }]
@@ -88,6 +91,4 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Chatbot running on http://localhost:${PORT}`));
-
-
+app.listen(PORT, () => console.log(`🚀 Backend running on http://localhost:${PORT}`));
