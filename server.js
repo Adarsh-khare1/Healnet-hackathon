@@ -1,12 +1,12 @@
-// index.js (or server.js)
+// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import axios from "axios";
 import path from "path";
-import mongoose from "mongoose";
 import { fileURLToPath } from "url";
+import mongoose from "mongoose";
 
 dotenv.config();
 
@@ -16,57 +16,35 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Check env variables
+// 🔑 Check environment keys
 if (!process.env.OPENAI_API_KEY) {
   console.error("❌ Missing OPENAI_API_KEY in .env");
-  process.exit(1);
-}
-if (!process.env.MONGO_URI) {
-  console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
 if (!process.env.SERP_API_KEY) {
   console.warn("⚠️ Missing SERP_API_KEY, live queries may fail");
 }
+if (!process.env.MONGO_URI) {
+  console.warn("⚠️ Missing MONGO_URI, database features won’t work");
+}
 
+// ✅ MongoDB Connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// ✅ MongoDB connect
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
-    process.exit(1);
-  });
-
-// ✅ Token schema
-const TokenSchema = new mongoose.Schema({
-  totalTokens: { type: Number, default: 0 },
-});
-const Token = mongoose.model("Token", TokenSchema);
-
-// Ensure a single token document exists
-async function ensureTokenDoc() {
-  const existing = await Token.findOne();
-  if (!existing) {
-    await Token.create({ totalTokens: 0 });
-  }
-}
-ensureTokenDoc();
-
-// OpenAI setup
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   timeout: 60000,
 });
 
-// Fetch live data from SerpAPI
+// 🔍 Fetch live data from SerpAPI
 const fetchSerpData = async (query) => {
   if (!process.env.SERP_API_KEY) return null;
   try {
@@ -87,7 +65,7 @@ const fetchSerpData = async (query) => {
   }
 };
 
-// ✅ Chat endpoint
+// 💬 Chat endpoint
 app.post("/chat", async (req, res) => {
   const { message } = req.body;
   if (!message)
@@ -96,7 +74,7 @@ app.post("/chat", async (req, res) => {
       .json({ reply: "Provide a message", tokensUsed: 0 });
 
   try {
-    // Ask GPT
+    // Ask GPT-4o-mini
     const gptReply = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: message }],
@@ -105,7 +83,7 @@ app.post("/chat", async (req, res) => {
     let reply = gptReply?.choices?.[0]?.message?.content || "No reply";
     let tokensUsed = gptReply?.usage?.total_tokens || 0;
 
-    // If needs live data → SerpAPI
+    // Use SerpAPI if GPT fails or needs live data
     if (
       /I don't know|cannot provide|Sorry/i.test(reply) ||
       /today|latest|weather|news|update/i.test(message)
@@ -124,12 +102,7 @@ app.post("/chat", async (req, res) => {
       }
     }
 
-    // ✅ Save tokens globally
-    const tokenDoc = await Token.findOne();
-    tokenDoc.totalTokens += tokensUsed;
-    await tokenDoc.save();
-
-    res.json({ reply, tokensUsed, totalTokens: tokenDoc.totalTokens });
+    res.json({ reply, tokensUsed });
   } catch (err) {
     console.error(err.response?.data || err.message || err);
     res
@@ -138,12 +111,7 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// ✅ Get global token count
-app.get("/tokens", async (req, res) => {
-  const tokenDoc = await Token.findOne();
-  res.json({ totalTokens: tokenDoc?.totalTokens || 0 });
-});
-
+// Start server
 app.listen(PORT, () =>
   console.log(`🚀 Chatbot running on http://localhost:${PORT}`)
 );
