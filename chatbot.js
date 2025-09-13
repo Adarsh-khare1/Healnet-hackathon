@@ -1,10 +1,14 @@
 // chatbot.js
 const chatBody = document.getElementById("chatBody");
 const userInput = document.getElementById("userInput");
-const sendBtn = document.querySelector("button");
+const sendBtn = document.getElementById("sendBtn");
 
-// Initialize total tokens from localStorage
-let totalTokensUsed = parseInt(localStorage.getItem('totalTokensUsed')) || 0;
+// Generate a unique user ID for session (or use login info)
+let userId = localStorage.getItem("userId");
+if (!userId) {
+  userId = "Guest-" + Math.random().toString(36).substring(2, 10);
+  localStorage.setItem("userId", userId);
+}
 
 // Helper to append messages
 function appendMessage(text, sender = "bot") {
@@ -12,15 +16,6 @@ function appendMessage(text, sender = "bot") {
   msg.className = sender === "user" ? "user-message" : "bot-message";
   msg.innerHTML = text.replace(/\n/g, "<br>");
   chatBody.appendChild(msg);
-  chatBody.scrollTop = chatBody.scrollHeight;
-}
-
-// Append token info
-function appendTokenInfo() {
-  const tokenDiv = document.createElement("div");
-  tokenDiv.className = "token-info";
-  tokenDiv.textContent = `Total tokens used: ${totalTokensUsed}`;
-  chatBody.appendChild(tokenDiv);
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
@@ -33,22 +28,24 @@ async function sendMessage() {
   userInput.value = "";
 
   try {
-    const res = await fetch("https://healnet-hackathon.onrender.com/chat", {
+    const res = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg }),
+      body: JSON.stringify({ user: userId, message: msg }),
     });
 
     if (!res.ok) throw new Error("Server error");
-    const data = await res.json();
 
+    const data = await res.json();
     appendMessage(data.reply, "bot");
 
-    // Update total tokens
-    totalTokensUsed += data.tokensUsed || 0;
-    localStorage.setItem("totalTokensUsed", totalTokensUsed);
+    // Display token info
+    const tokenDiv = document.createElement("div");
+    tokenDiv.className = "token-info";
+    tokenDiv.textContent = `Total tokens used: ${data.totalTokensUsed}`;
+    chatBody.appendChild(tokenDiv);
 
-    appendTokenInfo();
+    chatBody.scrollTop = chatBody.scrollHeight;
 
   } catch (err) {
     console.error("Chat error:", err);
@@ -56,21 +53,10 @@ async function sendMessage() {
   }
 }
 
-// Send on Enter key
+// Send on Enter
 userInput.addEventListener("keypress", (e) => {
   if (e.key === "Enter") sendMessage();
 });
 
 // Send on button click
 sendBtn.addEventListener("click", sendMessage);
-
-// Optional: reset tokens
-function resetTokens() {
-  totalTokensUsed = 0;
-  localStorage.setItem("totalTokensUsed", 0);
-  const resetDiv = document.createElement("div");
-  resetDiv.className = "token-info";
-  resetDiv.textContent = "Tokens reset to 0";
-  chatBody.appendChild(resetDiv);
-  chatBody.scrollTop = chatBody.scrollHeight;
-}
