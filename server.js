@@ -22,6 +22,12 @@ if (!process.env.OPENAI_API_KEY) {
 if (!process.env.SERP_API_KEY) {
   console.warn("⚠️ Missing SERP_API_KEY, live queries may fail");
 }
+app.get('/',(req,res)=>{
+  res.send({
+    activeStatus:true,
+    error:false
+  })
+})
 
 app.use(cors());
 app.use(express.json());
@@ -88,3 +94,4 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Chatbot running on http://localhost:${PORT}`));
+
