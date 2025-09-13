@@ -4,9 +4,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import axios from "axios";
+import mongoose from "mongoose";
 import path from "path";
 import { fileURLToPath } from "url";
-import mongoose from "mongoose";
 
 dotenv.config();
 
@@ -16,35 +16,54 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔑 Check environment keys
+// --- Env checks ---
 if (!process.env.OPENAI_API_KEY) {
   console.error("❌ Missing OPENAI_API_KEY in .env");
+  process.exit(1);
+}
+if (!process.env.MONGO_URI) {
+  console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
 if (!process.env.SERP_API_KEY) {
   console.warn("⚠️ Missing SERP_API_KEY, live queries may fail");
 }
-if (!process.env.MONGO_URI) {
-  console.warn("⚠️ Missing MONGO_URI, database features won’t work");
-}
 
-// ✅ MongoDB Connection
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
-
-// Middleware
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// --- MongoDB Setup ---
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => console.error("❌ Mongo Error:", err));
+
+const TokenSchema = new mongoose.Schema({
+  totalTokens: { type: Number, default: 0 }
+});
+const Token = mongoose.model("Token", TokenSchema);
+
+// --- Helper: Add tokens ---
+async function addTokens(tokensUsed) {
+  let tokenDoc = await Token.findOne();
+  if (!tokenDoc) {
+    tokenDoc = new Token({ totalTokens: tokensUsed });
+  } else {
+    tokenDoc.totalTokens += tokensUsed;
+  }
+  await tokenDoc.save();
+  return tokenDoc.totalTokens;
+}
+
+// --- OpenAI Client ---
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 60000,
+  timeout: 60000
 });
 
-// 🔍 Fetch live data from SerpAPI
+// --- SerpAPI Helper ---
 const fetchSerpData = async (query) => {
   if (!process.env.SERP_API_KEY) return null;
   try {
@@ -65,25 +84,24 @@ const fetchSerpData = async (query) => {
   }
 };
 
-// 💬 Chat endpoint
+// --- Chat Endpoint ---
 app.post("/chat", async (req, res) => {
   const { message } = req.body;
   if (!message)
     return res
       .status(400)
-      .json({ reply: "Provide a message", tokensUsed: 0 });
+      .json({ reply: "Provide a message", tokensUsed: 0, totalTokens: 0 });
 
   try {
-    // Ask GPT-4o-mini
     const gptReply = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: message }],
+      messages: [{ role: "user", content: message }]
     });
 
     let reply = gptReply?.choices?.[0]?.message?.content || "No reply";
     let tokensUsed = gptReply?.usage?.total_tokens || 0;
 
-    // Use SerpAPI if GPT fails or needs live data
+    // If query needs live info
     if (
       /I don't know|cannot provide|Sorry/i.test(reply) ||
       /today|latest|weather|news|update/i.test(message)
@@ -94,24 +112,26 @@ app.post("/chat", async (req, res) => {
           model: "gpt-4o-mini",
           messages: [
             { role: "system", content: `Live search results:\n${serpData}` },
-            { role: "user", content: message },
-          ],
+            { role: "user", content: message }
+          ]
         });
         reply = enhancedReply?.choices?.[0]?.message?.content || serpData;
         tokensUsed += enhancedReply?.usage?.total_tokens || 0;
       }
     }
 
-    res.json({ reply, tokensUsed });
+    // Update DB with new tokens
+    const totalTokens = await addTokens(tokensUsed);
+
+    res.json({ reply, tokensUsed, totalTokens });
   } catch (err) {
     console.error(err.response?.data || err.message || err);
     res
       .status(500)
-      .json({ reply: "Error processing request", tokensUsed: 0 });
+      .json({ reply: "Error processing request", tokensUsed: 0, totalTokens: 0 });
   }
 });
 
-// Start server
 app.listen(PORT, () =>
   console.log(`🚀 Chatbot running on http://localhost:${PORT}`)
 );
