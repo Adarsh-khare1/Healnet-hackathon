@@ -1,14 +1,7 @@
-// chatbot.js
+// Get DOM elements
 const chatBody = document.getElementById("chatBody");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
-
-// Generate a unique user ID for session (or use login info)
-let userId = localStorage.getItem("userId");
-if (!userId) {
-  userId = "Guest-" + Math.random().toString(36).substring(2, 10);
-  localStorage.setItem("userId", userId);
-}
 
 // Helper to append messages
 function appendMessage(text, sender = "bot") {
@@ -17,6 +10,24 @@ function appendMessage(text, sender = "bot") {
   msg.innerHTML = text.replace(/\n/g, "<br>");
   chatBody.appendChild(msg);
   chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+// Load global tokens from DB
+async function loadTokens() {
+  try {
+    const res = await fetch("/tokens");
+    if (!res.ok) throw new Error("Failed to fetch tokens");
+    const data = await res.json();
+
+    const tokenDiv = document.createElement("div");
+    tokenDiv.className = "token-info";
+    tokenDiv.textContent = `🌐 Total tokens used (all users): ${data.totalTokens}`;
+    chatBody.appendChild(tokenDiv);
+
+    chatBody.scrollTop = chatBody.scrollHeight;
+  } catch (err) {
+    console.error("Error loading tokens:", err);
+  }
 }
 
 // Send message
@@ -31,22 +42,22 @@ async function sendMessage() {
     const res = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user: userId, message: msg }),
+      body: JSON.stringify({ message: msg }),
     });
 
     if (!res.ok) throw new Error("Server error");
 
     const data = await res.json();
+
     appendMessage(data.reply, "bot");
 
-    // Display token info
+    // Show global tokens from DB
     const tokenDiv = document.createElement("div");
     tokenDiv.className = "token-info";
-    tokenDiv.textContent = `Total tokens used: ${data.totalTokensUsed}`;
+    tokenDiv.textContent = `🌐 Total tokens used (all users): ${data.totalTokens}`;
     chatBody.appendChild(tokenDiv);
 
     chatBody.scrollTop = chatBody.scrollHeight;
-
   } catch (err) {
     console.error("Chat error:", err);
     appendMessage("⚠️ Sorry, I’m having trouble right now. Please try again.", "bot");
@@ -60,3 +71,6 @@ userInput.addEventListener("keypress", (e) => {
 
 // Send on button click
 sendBtn.addEventListener("click", sendMessage);
+
+// ✅ Load tokens on page load
+loadTokens();
